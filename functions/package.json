@@ -1,0 +1,14 @@
+{
+  "name": "movie-finder-functions",
+  "description": "Find movies from screenshots",
+  "main": "index.js",
+  "dependencies": {
+    "firebase-functions": "^4.3.1",
+    "firebase-admin": "^11.8.0",
+    "axios": "^1.5.0"
+  },
+  "engines": {
+    "node": "18"
+  },
+  "private": true
+}

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Найди фильм по скриншоту</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; display: flex; justify-content: center; align-items: center; }
+        .container { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); max-width: 500px; width: 100%; text-align: center; }
+        h1 { color: #333; margin-bottom: 20px; font-size: 28px; }
+        .upload-area { border: 2px dashed #007bff; border-radius: 10px; padding: 40px 20px; margin: 20px 0; cursor: pointer; transition: all 0.3s ease; background: #f8f9fa; }
+        .upload-area:hover { background: #e9ecef; border-color: #0056b3; }
+        #screenshotInput { display: none; }
+        .button { background: #007bff; color: white; border: none; padding: 15px 30px; border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s ease; width: 100%; margin: 10px 0; }
+        .button:hover:not(:disabled) { background: #0056b3; transform: translateY(-2px); }
+        .button:disabled { background: #6c757d; cursor: not-allowed; transform: none; }
+        #result { margin-top: 25px; padding: 20px; border-radius: 10px; background: #f8f9fa; min-height: 60px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+        .success { color: #155724; background: #d4edda !important; border: 1px solid #c3e6cb; }
+        .error { color: #721c24; background: #f8d7da !important; border: 1px solid #f5c6cb; }
+        .loading { color: #856404; background: #fff3cd !important; border: 1px solid #ffeaa7; }
+        .screenshot-preview { max-width: 100%; max-height: 300px; margin: 15px 0; border-radius: 10px; display: none; }
+        .instructions { background: #e7f3ff; padding: 15px; border-radius: 10px; margin: 20px 0; text-align: left; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Найди фильм по скриншоту</h1>
+        
+        <div class="instructions">
+            <strong>Как использовать:</strong>
+            <ol>
+                <li>Сделай скриншот из видео</li>
+                <li>Загрузи его ниже</li>
+                <li>AI найдет название фильма через Google Vision</li>
+            </ol>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+            <div style="font-size: 48px; margin-bottom: 15px;">📸</div>
+            <h3>Перетащи скриншот сюда</h3>
+            <p>или нажми для выбора файла</p>
+            <input type="file" id="screenshotInput" accept="image/*">
+        </div>
+
+        <img class="screenshot-preview" id="screenshotPreview">
+        
+        <button class="button" id="analyzeBtn" disabled>🔍 Найти фильм через Google Vision</button>
+
+        <div id="result">Здесь появится результат анализа...</div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const screenshotInput = document.getElementById('screenshotInput');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const resultDiv = document.getElementById('result');
+        const screenshotPreview = document.getElementById('screenshotPreview');
+
+        uploadArea.addEventListener('click', () => screenshotInput.click());
+
+        screenshotInput.addEventListener('change', function() {
+            const file = this.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const url = URL.createObjectURL(file);
+                screenshotPreview.src = url;
+                screenshotPreview.style.display = 'block';
+                analyzeBtn.disabled = false;
+                resultDiv.textContent = 'Готов к анализу! Нажми "Найти фильм"';
+                resultDiv.className = '';
+            }
+        });
+
+        analyzeBtn.addEventListener('click', async () => {
+            const file = screenshotInput.files[0];
+            if (!file) return;
+
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = 'Анализируем через Google Vision...';
+            resultDiv.textContent = 'Отправляем скриншот в Google Vision API...';
+            resultDiv.className = 'loading';
+
+            try {
+                const base64 = await fileToBase64(file);
+                
+                // 🔥 NETLIFY FUNCTION URL - будет после деплоя!
+                const NETLIFY_FUNCTION_URL = '/.netlify/functions/analyze';
+                
+                const response = await fetch(NETLIFY_FUNCTION_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ imageBase64: base64 })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    resultDiv.innerHTML = `🎉 <strong>${data.movie_name}</strong><br>Уверенность: ${data.confidence}%<br><small>Найдено через Google Vision API</small>${data.found_text ? `<br><small>Распознанный текст: "${data.found_text}"</small>` : ''}`;
+                    resultDiv.className = 'success';
+                } else {
+                    resultDiv.innerHTML = `❌ ${data.error || 'Не удалось определить фильм'}`;
+                    resultDiv.className = 'error';
+                }
+
+            } catch (error) {
+                console.error('Ошибка:', error);
+                resultDiv.innerHTML = '😞 Ошибка соединения с сервером';
+                resultDiv.className = 'error';
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = '🔍 Найти фильм через Google Vision';
+            }
+        });
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => uploadArea.style.background = '#e9ecef', false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => uploadArea.style.background = '#f8f9fa', false);
+        });
+
+        uploadArea.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            screenshotInput.files = files;
+            screenshotInput.dispatchEvent(new Event('change'));
+        }
+    </script>
+</body>
+</html>
